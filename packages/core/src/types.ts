@@ -255,16 +255,12 @@ export interface AgentErrorEvent {
  * Union type for all history events
  */
 export type HistoricalEvent =
-	| AgentStepEvent
-	| ObservationEvent
-	| UserTakeoverEvent
-	| RetryEvent
-	| AgentErrorEvent
+	AgentStepEvent | ObservationEvent | UserTakeoverEvent | RetryEvent | AgentErrorEvent
 
 /**
- * Agent execution status
+ * Agent lifecycle status.
  */
-export type AgentStatus = 'idle' | 'running' | 'completed' | 'error'
+export type AgentStatus = 'idle' | 'running' | 'completed' | 'error' | 'stopped'
 
 /**
  * Agent activity - transient state for immediate UI feedback.

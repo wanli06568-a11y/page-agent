@@ -1,5 +1,5 @@
 import tailwindcss from '@tailwindcss/vite'
-import react from '@vitejs/plugin-react-swc'
+import react from '@vitejs/plugin-react'
 import { config as dotenvConfig } from 'dotenv'
 import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import process from 'node:process'
@@ -26,7 +26,9 @@ const SPA_ROUTES = [
 	'docs/features/data-masking',
 	'docs/features/custom-instructions',
 	'docs/features/models',
+	'docs/features/local-llms',
 	'docs/features/chrome-extension',
+	'docs/features/mcp-server',
 	'docs/features/third-party-agent',
 	'docs/advanced/page-agent',
 	'docs/advanced/page-agent-core',
@@ -80,24 +82,17 @@ export default defineConfig(({ mode }) => ({
 				handler(message)
 			},
 			output: {
-				manualChunks: {
-					vendor: ['react', 'react-dom', 'wouter'],
+				manualChunks(id) {
+					if (/[\\/]node_modules[\\/](react|react-dom|wouter)([\\/]|$)/.test(id)) {
+						return 'vendor'
+					}
 				},
 			},
 		},
 	},
 	resolve: {
 		alias: {
-			// Self root
 			'@': resolve(__dirname, 'src'),
-
-			// Monorepo packages (always bundle local code instead of npm versions)
-			'@page-agent/page-controller': resolve(__dirname, '../page-controller/src/PageController.ts'),
-			'@page-agent/llms': resolve(__dirname, '../llms/src/index.ts'),
-			'@page-agent/core': resolve(__dirname, '../core/src/PageAgentCore.ts'),
-			'@page-agent/ui': resolve(__dirname, '../ui/src/index.ts'),
-
-			'page-agent': resolve(__dirname, '../page-agent/src/PageAgent.ts'),
 		},
 	},
 	define: {

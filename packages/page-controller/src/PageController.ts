@@ -18,6 +18,7 @@ import * as dom from './dom'
 import type { FlatDomTree, InteractiveElementDomNode } from './dom/dom_tree/type'
 import { getPageInfo } from './dom/getPageInfo'
 import { patchReact } from './patches/react'
+import { isAnchorElement } from './utils'
 
 /**
  * Configuration for PageController
@@ -184,7 +185,7 @@ export class PageController extends EventTarget {
 
 		const blacklist = [
 			...(this.config.interactiveBlacklist || []),
-			...document.querySelectorAll('[data-page-agent-not-interactive]').values(),
+			...Array.from(document.querySelectorAll('[data-page-agent-not-interactive]')),
 		]
 
 		this.flatTree = dom.getFlatTree({
@@ -192,7 +193,11 @@ export class PageController extends EventTarget {
 			interactiveBlacklist: blacklist,
 		})
 
-		this.simplifiedHTML = dom.flatTreeToString(this.flatTree, this.config.includeAttributes)
+		this.simplifiedHTML = dom.flatTreeToString(
+			this.flatTree,
+			this.config.includeAttributes,
+			this.config.keepSemanticTags
+		)
 
 		this.selectorMap.clear()
 		this.selectorMap = dom.getSelectorMap(this.flatTree)
@@ -217,6 +222,7 @@ export class PageController extends EventTarget {
 	 * Clean up all element highlights
 	 */
 	async cleanUpHighlights(): Promise<void> {
+		console.log('[PageController] cleanUpHighlights')
 		dom.cleanUpHighlights()
 	}
 
@@ -243,7 +249,7 @@ export class PageController extends EventTarget {
 			await clickElement(element)
 
 			// Handle links that open in new tabs
-			if (element instanceof HTMLAnchorElement && element.target === '_blank') {
+			if (isAnchorElement(element) && element.target === '_blank') {
 				return {
 					success: true,
 					message: `✅ Clicked element (${elemText ?? index}). ⚠️ Link opened in a new tab.`,
@@ -320,11 +326,11 @@ export class PageController extends EventTarget {
 
 			this.assertIndexed()
 
-			const scrollAmount = pixels ?? numPages * (down ? 1 : -1) * window.innerHeight
+			const scrollAmount = (pixels ?? numPages * window.innerHeight) * (down ? 1 : -1)
 
 			const element = index !== undefined ? getElementByIndex(this.selectorMap, index) : null
 
-			const message = await scrollVertically(down, scrollAmount, element)
+			const message = await scrollVertically(scrollAmount, element)
 
 			return {
 				success: true,
@@ -355,7 +361,7 @@ export class PageController extends EventTarget {
 
 			const element = index !== undefined ? getElementByIndex(this.selectorMap, index) : null
 
-			const message = await scrollHorizontally(right, scrollAmount, element)
+			const message = await scrollHorizontally(scrollAmount, element)
 
 			return {
 				success: true,
@@ -370,13 +376,15 @@ export class PageController extends EventTarget {
 	}
 
 	/**
-	 * Execute arbitrary JavaScript on the page
+	 * Execute arbitrary JavaScript on the page.
+	 * The optional `signal` is exposed to the script scope so cooperative code
+	 * can abort promptly when the task is stopped.
 	 */
-	async executeJavascript(script: string): Promise<ActionResult> {
+	async executeJavascript(script: string, signal?: AbortSignal): Promise<ActionResult> {
 		try {
-			// Wrap script in async function to support await
-			const asyncFunction = eval(`(async () => { ${script} })`)
-			const result = await asyncFunction()
+			// Wrap script in async function to support await, exposing `signal`.
+			const asyncFunction = eval(`(async (signal) => { ${script} })`)
+			const result = await asyncFunction(signal)
 			return {
 				success: true,
 				message: `✅ Executed JavaScript. Result: ${result}`,
@@ -423,3 +431,5 @@ export class PageController extends EventTarget {
 		this.mask = null
 	}
 }
+
+export * from './actions'

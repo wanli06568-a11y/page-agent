@@ -1,15 +1,25 @@
 {
     "name": "@page-agent/llms",
-    "version": "1.5.8",
+    "version": "1.12.4",
     "type": "module",
-    "main": "./dist/lib/page-agent-llms.js",
-    "module": "./dist/lib/page-agent-llms.js",
-    "types": "./dist/lib/index.d.ts",
+    "main": "./src/index.ts",
+    "types": "./src/index.ts",
     "exports": {
         ".": {
-            "types": "./dist/lib/index.d.ts",
-            "import": "./dist/lib/page-agent-llms.js",
-            "default": "./dist/lib/page-agent-llms.js"
+            "types": "./src/index.ts",
+            "default": "./src/index.ts"
+        }
+    },
+    "publishConfig": {
+        "main": "./dist/lib/page-agent-llms.js",
+        "module": "./dist/lib/page-agent-llms.js",
+        "types": "./dist/lib/index.d.ts",
+        "exports": {
+            ".": {
+                "types": "./dist/lib/index.d.ts",
+                "import": "./dist/lib/page-agent-llms.js",
+                "default": "./dist/lib/page-agent-llms.js"
+            }
         }
     },
     "files": [
@@ -33,16 +43,18 @@
     "homepage": "https://alibaba.github.io/page-agent/",
     "scripts": {
         "build": "vite build",
-        "prepublishOnly": "node -e \"const fs=require('fs');['LICENSE'].forEach(f=>fs.copyFileSync('../../'+f,f))\"",
-        "postpublish": "node -e \"['LICENSE'].forEach(f=>{try{require('fs').unlinkSync(f)}catch{}})\""
+        "test": "vitest run --project llms",
+        "test:live": "vitest run --project llms:live",
+        "prepublishOnly": "node ../../scripts/pre-publish.js",
+        "postpublish": "node ../../scripts/post-publish.js"
     },
     "dependencies": {
-        "chalk": "^5.6.2"
+        "chalk": "^6.0.0"
     },
     "peerDependencies": {
         "zod": "^3.25.0 || ^4.0.0"
     },
     "devDependencies": {
-        "zod": "^4.3.5"
+        "zod": "^4.5.1"
     }
 }

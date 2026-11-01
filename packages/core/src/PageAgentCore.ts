@@ -21,9 +21,9 @@ import type {
 	MacroToolInput,
 	MacroToolResult,
 } from './types'
-import { assert, fetchLlmsTxt, normalizeResponse, uid, waitFor } from './utils'
+import { assert, fetchLlmsTxt, normalizeResponse, suppress, uid, waitFor } from './utils'
 
-export { tool, type PageAgentTool } from './tools'
+export { tool, type PageAgentTool, type ToolContext } from './tools'
 export type * from './types'
 
 export type PageAgentCoreConfig = AgentConfig & { pageController: PageController }
@@ -42,7 +42,7 @@ export type PageAgentCoreConfig = AgentConfig & { pageController: PageController
  * - loop
  *
  * ## Event System
- * - `statuschange` - Agent status transitions (idle → running → completed/error)
+ * - `statuschange` - Agent status transitions (idle → running → completed/error/stopped)
  * - `historychange` - History events updated (persistent, part of agent memory)
  * - `activity` - Real-time activity feedback (transient, for UI only)
  * - `dispose` - Agent cleanup triggered
@@ -73,16 +73,27 @@ export class PageAgentCore extends EventTarget {
 	disposed = false
 
 	/**
-	 * Callback for when agent needs user input (ask_user tool)
-	 * If not set, ask_user tool will be disabled
+	 * Called when the agent needs to ask the user questions.
+	 * If unset, the `ask_user` tool will be disabled.
+	 * Implementations should reject the promise when `signal` aborts.
 	 * @example onAskUser: (q) => window.prompt(q) || ''
 	 */
-	onAskUser?: (question: string) => Promise<string>
+	onAskUser?: (question: string, options?: { signal: AbortSignal }) => Promise<string>
 
 	#status: AgentStatus = 'idle'
 	#llm: LLM
+	/**
+	 * Task cancellation primitive: its signal reaches the LLM fetch, tools
+	 * (via `ctx.signal`) and async callbacks. Aborted only by `stop`/`dispose`
+	 * (during a task) or task setup, always WITHOUT a reason so `signal.reason`
+	 * stays a standard `AbortError`.
+	 */
 	#abortController = new AbortController()
 	#observations: string[] = []
+
+	/** Resolves when the current run has fully settled. Awaited by `stop()`. */
+	#running: Promise<void> = Promise.resolve()
+	#lastResult: ExecutionResult | null = null
 
 	/** internal states during a single task execution */
 	#states = {
@@ -103,29 +114,19 @@ export class PageAgentCore extends EventTarget {
 		this.tools = new Map(tools)
 		this.pageController = config.pageController
 
-		// Listen to LLM retry events
 		this.#llm.addEventListener('retry', (e) => {
-			const { attempt, maxAttempts } = (e as CustomEvent).detail
+			const { attempt, maxAttempts, lastError } = (e as CustomEvent).detail
 			this.#emitActivity({ type: 'retrying', attempt, maxAttempts })
-			// Also push to history for panel rendering
+			this.history.push({
+				type: 'error',
+				message: String(lastError),
+				rawResponse: (lastError as InvokeError).rawResponse,
+			})
 			this.history.push({
 				type: 'retry',
 				message: `LLM retry attempt ${attempt} of ${maxAttempts}`,
 				attempt,
 				maxAttempts,
-			})
-			this.#emitHistoryChange()
-		})
-		this.#llm.addEventListener('error', (e) => {
-			const error = (e as CustomEvent).detail.error as Error | InvokeError
-			if ((error as any)?.rawError?.name === 'AbortError') return
-			const message = String(error)
-			this.#emitActivity({ type: 'error', message })
-			// Also push to history for panel rendering
-			this.history.push({
-				type: 'error',
-				message,
-				rawResponse: (error as InvokeError).rawResponse,
 			})
 			this.#emitHistoryChange()
 		})
@@ -150,13 +151,19 @@ export class PageAgentCore extends EventTarget {
 		return this.#status
 	}
 
+	/** Result of the most recent run, or `null` before the first run completes. */
+	get lastResult(): ExecutionResult | null {
+		return this.#lastResult
+	}
+
 	/** Emit statuschange event */
 	#emitStatusChange(): void {
 		this.dispatchEvent(new Event('statuschange'))
 	}
 
 	/** Emit historychange event */
-	#emitHistoryChange(): void {
+	#emitHistoryChange(pushHistoricalEvent?: HistoricalEvent): void {
+		if (pushHistoricalEvent) this.history.push(pushHistoricalEvent)
 		this.dispatchEvent(new Event('historychange'))
 	}
 
@@ -186,165 +193,184 @@ export class PageAgentCore extends EventTarget {
 		this.#observations.push(content)
 	}
 
-	/** Stop the current task. Agent remains reusable. */
-	stop() {
-		this.pageController.cleanUpHighlights()
-		this.pageController.hideMask()
+	/**
+	 * Stop the current task and wait until the run has fully settled (including lifecycle hooks).
+	 * @note never await .stop() in a lifecycle hook.
+	 */
+	async stop(): Promise<void> {
+		if (this.#status !== 'running') return
 		this.#abortController.abort()
+		await this.#running
 	}
 
+	/**
+	 * external errors (pre-checks/config/hooks) will threw;
+	 * agent errors will be caught and added to history, and return a failed result
+	 */
 	async execute(task: string): Promise<ExecutionResult> {
+		// pre-checks
 		if (this.disposed) throw new Error('PageAgent has been disposed. Create a new instance.')
+		if (this.#status === 'running') throw new Error('A task is already running.')
 		if (!task) throw new Error('Task is required')
+
 		this.task = task
 		this.taskId = uid()
 
+		this.history = []
+		this.#observations = []
+		this.#states = { totalWaitTime: 0, lastURL: '', browserState: null }
+		this.#abortController = new AbortController()
+		const signal = this.#abortController.signal
+
+		let resolveRunning!: () => void
+		this.#running = new Promise<void>((r) => (resolveRunning = r))
+
+		this.#setStatus('running')
+		this.#emitHistoryChange()
+
 		// Disable ask_user tool if onAskUser is not set
-		if (!this.onAskUser) {
-			this.tools.delete('ask_user')
-		}
+		if (!this.onAskUser) this.tools.delete('ask_user')
 
 		const onBeforeStep = this.config.onBeforeStep
 		const onAfterStep = this.config.onAfterStep
 		const onBeforeTask = this.config.onBeforeTask
 		const onAfterTask = this.config.onAfterTask
-
-		await onBeforeTask?.(this)
-
-		// Show mask
-		await this.pageController.showMask()
-
-		if (this.#abortController) {
-			this.#abortController.abort()
-			this.#abortController = new AbortController()
-		}
-
-		this.history = []
-		this.#setStatus('running')
-		this.#emitHistoryChange()
-		this.#observations = []
-
-		// Reset internal states
-		this.#states = { totalWaitTime: 0, lastURL: '', browserState: null }
+		const stepDelay = this.config.stepDelay ?? 0.4
+		const maxSteps = this.config.maxSteps
 
 		let step = 0
+		let taskResult: ExecutionResult
+		let finalStatus: AgentStatus = 'error'
 
-		while (true) {
-			try {
-				console.group(`step: ${step}`)
+		await suppress(() => this.pageController.showMask())
 
+		// graceful exit
+		try {
+			await onBeforeTask?.(this)
+
+			while (true) {
 				await onBeforeStep?.(this, step)
 
-				// observe
+				// handle internal agent errors
+				try {
+					console.group(`step: ${step}`)
 
-				console.log(chalk.blue.bold('👀 Observing...'))
+					// @note It's convenient to treat stepDelay as part of the next step.
+					// Maybe move it to a dedicated try block for better semantics?
+					if (step > 0) await waitFor(stepDelay, signal)
 
-				this.#states.browserState = await this.pageController.getBrowserState()
-				await this.#handleObservations(step)
+					signal.throwIfAborted()
 
-				// assemble prompts
+					// observe
 
-				const messages = [
-					{ role: 'system' as const, content: this.#getSystemPrompt() },
-					{ role: 'user' as const, content: await this.#assembleUserPrompt() },
-				]
+					console.log(chalk.blue.bold('👀 Observing...'))
 
-				const macroTool = { AgentOutput: this.#packMacroTool() }
+					this.#states.browserState = await this.pageController.getBrowserState()
+					await this.#handleObservations(step)
 
-				// invoke LLM
+					// assemble prompts
 
-				console.log(chalk.blue.bold('🧠 Thinking...'))
-				this.#emitActivity({ type: 'thinking' })
+					const messages = [
+						{ role: 'system' as const, content: this.#getSystemPrompt() },
+						{ role: 'user' as const, content: await this.#assembleUserPrompt() },
+					]
 
-				const result = await this.#llm.invoke(messages, macroTool, this.#abortController.signal, {
-					toolChoiceName: 'AgentOutput',
-					normalizeResponse: (res) => normalizeResponse(res, this.tools),
-				})
+					const macroTool = { AgentOutput: this.#packMacroTool() }
 
-				// assemble history
+					// invoke LLM
 
-				const macroResult = result.toolResult as MacroToolResult
-				const input = macroResult.input
-				const output = macroResult.output
-				const reflection: Partial<AgentReflection> = {
-					evaluation_previous_goal: input.evaluation_previous_goal,
-					memory: input.memory,
-					next_goal: input.next_goal,
-				}
-				const actionName = Object.keys(input.action)[0]
-				const action: AgentStepEvent['action'] = {
-					name: actionName,
-					input: input.action[actionName],
-					output: output,
-				}
+					console.log(chalk.blue.bold('🧠 Thinking...'))
+					this.#emitActivity({ type: 'thinking' })
 
-				this.history.push({
-					type: 'step',
-					stepIndex: step,
-					reflection,
-					action,
-					usage: result.usage,
-					rawResponse: result.rawResponse,
-					rawRequest: result.rawRequest,
-				} as AgentStepEvent)
-				this.#emitHistoryChange()
+					const result = await this.#llm.invoke(messages, macroTool, signal, {
+						toolChoiceName: 'AgentOutput',
+						normalizeResponse: (res) => normalizeResponse(res, this.tools),
+					})
 
-				//
+					// assemble history
 
-				await onAfterStep?.(this, this.history)
-
-				console.groupEnd()
-
-				// finish task if done
-
-				if (actionName === 'done') {
-					const success = action.input?.success ?? false
-					const text = action.input?.text || 'no text provided'
-					console.log(chalk.green.bold('Task completed'), success, text)
-					this.#onDone(success)
-					const result: ExecutionResult = {
-						success,
-						data: text,
-						history: this.history,
+					const macroResult = result.toolResult as MacroToolResult
+					const input = macroResult.input
+					const output = macroResult.output
+					const reflection: Partial<AgentReflection> = {
+						evaluation_previous_goal: input.evaluation_previous_goal,
+						memory: input.memory,
+						next_goal: input.next_goal,
 					}
-					await onAfterTask?.(this, result)
-					return result
-				}
-			} catch (error: unknown) {
-				console.groupEnd() // to prevent nested groups
-				const isAbortError = (error as any)?.rawError?.name === 'AbortError'
+					const actionName = Object.keys(input.action)[0]
+					const action: AgentStepEvent['action'] = {
+						name: actionName,
+						input: input.action[actionName],
+						output: output,
+					}
 
-				console.error('Task failed', error)
-				const errorMessage = isAbortError ? 'Task stopped' : String(error)
-				this.#emitActivity({ type: 'error', message: errorMessage })
-				this.history.push({ type: 'error', message: errorMessage, rawResponse: error })
-				this.#emitHistoryChange()
-				this.#onDone(false)
-				const result: ExecutionResult = {
-					success: false,
-					data: errorMessage,
-					history: this.history,
-				}
-				await onAfterTask?.(this, result)
-				return result
-			}
+					this.#emitHistoryChange({
+						type: 'step',
+						stepIndex: step,
+						reflection,
+						action,
+						usage: result.usage,
+						rawResponse: result.rawResponse,
+						rawRequest: result.rawRequest,
+					})
 
-			step++
-			if (step > this.config.maxSteps) {
-				const errorMessage = 'Step count exceeded maximum limit'
-				this.history.push({ type: 'error', message: errorMessage })
-				this.#emitHistoryChange()
-				this.#onDone(false)
-				const result: ExecutionResult = {
-					success: false,
-					data: errorMessage,
-					history: this.history,
-				}
-				await onAfterTask?.(this, result)
-				return result
-			}
+					if (actionName === 'done') {
+						const success = action.input?.success ?? false
+						const data = action.input?.text || 'no text provided'
+						console.log(chalk.green.bold('Task completed'), success, data)
+						taskResult = { success, data, history: this.history }
+						this.#lastResult = taskResult
+						finalStatus = 'completed'
+						break
+					}
+				} catch (error: unknown) {
+					// catch block must not throw error. otherwise the error may be overridden if finally block also throws error.
 
-			await waitFor(this.config.stepDelay ?? 0.4)
+					const isAbortError = (error as any)?.name === 'AbortError'
+					if (!isAbortError) console.error('Task failed', error)
+					const message = isAbortError ? 'Task aborted' : String(error)
+					this.#emitActivity({ type: 'error', message: message })
+					this.#emitHistoryChange({ type: 'error', message: message, rawResponse: error })
+					taskResult = { success: false, data: message, history: this.history }
+					this.#lastResult = taskResult
+					finalStatus = isAbortError ? 'stopped' : 'error'
+					break
+				} finally {
+					// finally block runs before the break above.
+
+					console.groupEnd()
+					// @note hook may throw error.
+					// which will override the `break` above and be handled as an external error.
+					// as expected.
+					await onAfterStep?.(this, this.history)
+				}
+
+				step++
+				if (step > maxSteps) {
+					const message = 'Step count exceeded maximum limit'
+					console.error(message)
+					this.#emitActivity({ type: 'error', message: message })
+					this.#emitHistoryChange({ type: 'error', message: message })
+					taskResult = { success: false, data: message, history: this.history }
+					this.#lastResult = taskResult
+					finalStatus = 'error'
+					break
+				}
+			} // while
+
+			await onAfterTask?.(this, taskResult)
+
+			return taskResult
+		} catch (error) {
+			this.#emitActivity({ type: 'error', message: String(error) })
+			finalStatus = 'error'
+			throw error
+		} finally {
+			await suppress(() => this.pageController.cleanUpHighlights())
+			await suppress(() => this.pageController.hideMask())
+			this.#abortController.abort()
+			resolveRunning()
+			this.#setStatus(finalStatus)
 		}
 	}
 
@@ -378,8 +404,8 @@ export class PageAgentCore extends EventTarget {
 			description: 'You MUST call this tool every step!',
 			inputSchema: macroToolSchema as z.ZodType<MacroToolInput>,
 			execute: async (input: MacroToolInput): Promise<MacroToolResult> => {
-				// abort
-				if (this.#abortController.signal.aborted) throw new Error('AbortError')
+				const signal = this.#abortController.signal
+				signal.throwIfAborted()
 
 				console.log(chalk.blue.bold('MacroTool input'), input)
 				const action = input.action
@@ -411,8 +437,9 @@ export class PageAgentCore extends EventTarget {
 
 				const startTime = Date.now()
 
-				// Execute tool, bind `this` to PageAgent
-				const result = await tool.execute.bind(this)(toolInput)
+				const result = await tool.execute.bind(this)(toolInput, { signal })
+				// Enforce abort even if the tool ignored the signal and resolved normally.
+				signal.throwIfAborted()
 
 				const duration = Date.now() - startTime
 				console.log(chalk.green.bold(`Tool (${toolName}) executed for ${duration}ms`), result)
@@ -617,13 +644,6 @@ export class PageAgentCore extends EventTarget {
 		prompt += '</browser_state>\n\n'
 
 		return prompt
-	}
-
-	#onDone(success = true) {
-		this.pageController.cleanUpHighlights()
-		this.pageController.hideMask() // No await - fire and forget
-		this.#setStatus(success ? 'completed' : 'error')
-		this.#abortController.abort()
 	}
 
 	dispose() {

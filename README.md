@@ -1,19 +1,30 @@
 # Page Agent
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://img.alicdn.com/imgextra/i4/O1CN01qKig1P1FnhpFKNdi6_!!6000000000532-2-tps-1280-256.png">
-  <img alt="Page Agent Banner" src="https://img.alicdn.com/imgextra/i1/O1CN01NCMKXj1Gn4tkFTsxf_!!6000000000666-2-tps-1280-256.png">
+  <source media="(prefers-color-scheme: dark)" srcset="https://page-agent.github.io/assets/readme/banner-dark.png">
+  <img alt="Page Agent Banner" src="https://page-agent.github.io/assets/readme/banner-light.png">
 </picture>
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-auto.svg)](https://opensource.org/licenses/MIT) [![TypeScript](https://img.shields.io/badge/%3C%2F%3E-TypeScript-%230074c1.svg)](http://www.typescriptlang.org/) [![Bundle Size](https://img.shields.io/bundlephobia/minzip/page-agent)](https://bundlephobia.com/package/page-agent) [![Downloads](https://img.shields.io/npm/dt/page-agent.svg)](https://www.npmjs.com/package/page-agent) [![GitHub stars](https://img.shields.io/github/stars/alibaba/page-agent.svg)](https://github.com/alibaba/page-agent)
+[![CI](https://img.shields.io/github/actions/workflow/status/alibaba/page-agent/main-ci.yml?branch=main&style=flat-square&label=ci)](https://github.com/alibaba/page-agent/actions/workflows/main-ci.yml)
+[![npm](https://img.shields.io/npm/v/page-agent?style=flat-square&label=npm)](https://www.npmjs.com/package/page-agent)
+[![downloads](https://img.shields.io/npm/dt/page-agent?style=flat-square)](https://www.npmjs.com/package/page-agent)
+[![Minzipped bundle size (excluding Zod)](https://deno.bundlejs.com/?q=page-agent&config=%7B%22esbuild%22%3A%7B%22external%22%3A%5B%22zod%22%5D%7D%7D&badge&badge-style=flat-square)](https://bundlejs.com/?q=page-agent&config=%7B%22esbuild%22%3A%7B%22external%22%3A%5B%22zod%22%5D%7D%7D 'Minified + gzip size, excluding the Zod peer dependency')
+[![license](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](https://opensource.org/licenses/MIT)
+[![typescript](https://img.shields.io/badge/%3C%2F%3E-typescript-blue?style=flat-square)](http://www.typescriptlang.org/)
+[![Chrome Web Store Rating](https://img.shields.io/chrome-web-store/rating/akldabonmimlicnjlflnapfeklbfemhj?style=flat-square&label=chrome%20rating)](https://chromewebstore.google.com/detail/page-agent-ext/akldabonmimlicnjlflnapfeklbfemhj)
+[![GitHub stars](https://img.shields.io/github/stars/alibaba/page-agent.svg)](https://github.com/alibaba/page-agent)
 
-The GUI Agent Living in Your Webpage. Control web interfaces with natural language.
+The GUI Agent Living in Your Webpage. One script gives any web page its own AI agent.
+
+<a href="https://trendshift.io/repositories/22551?utm_source=repository-badge&amp;utm_medium=badge&amp;utm_campaign=badge-repository-22551" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/repositories/22551" alt="alibaba%2Fpage-agent | Trendshift" width="180"/></a>
 
 🌐 **English** | [中文](./docs/README-zh.md)
 
 <a href="https://alibaba.github.io/page-agent/" target="_blank"><b>🚀 Demo</b></a> | <a href="https://alibaba.github.io/page-agent/docs/introduction/overview" target="_blank"><b>📖 Docs</b></a> | <a href="https://news.ycombinator.com/item?id=47264138" target="_blank"><b>📢 HN Discussion</b></a> | <a href="https://x.com/simonluvramen" target="_blank"><b>𝕏 Follow on X</b></a>
 
-<video id="demo-video" src="https://github.com/user-attachments/assets/a1f2eae2-13fb-4aae-98cf-a3fc1620a6c2" controls crossorigin muted></video>
+<!-- demo video -->
+
+[![Watch the demo](https://page-agent.github.io/assets/readme/poster.jpg)](https://github.com/user-attachments/assets/a1f2eae2-13fb-4aae-98cf-a3fc1620a6c2)
 
 ---
 
@@ -25,15 +36,17 @@ The GUI Agent Living in Your Webpage. Control web interfaces with natural langua
 - **📖 Text-based DOM manipulation**
     - No screenshots. No multi-modal LLMs or special permissions needed.
 - **🧠 Bring your own LLMs**
-- **🎨 Pretty UI with human-in-the-loop**
+    - Works with most mainstream models, including locally deployed ones. See [supported models](https://alibaba.github.io/page-agent/docs/features/models).
 - **🐙 Optional [chrome extension](https://alibaba.github.io/page-agent/docs/features/chrome-extension) for multi-page tasks.**
+    - And an [MCP Server (Beta)](https://alibaba.github.io/page-agent/docs/features/mcp-server) to control it from outside
 
 ## 💡 Use Cases
 
 - **SaaS AI Copilot** — Ship an AI copilot in your product in lines of code. No backend rewrite.
 - **Smart Form Filling** — Turn 20-click workflows into one sentence. Perfect for ERP, CRM, and admin systems.
 - **Accessibility** — Make any web app accessible through natural language. Voice commands, screen readers, zero barrier.
-- **Multi-page Agent** — Extend your own agent's reach across browser tabs with the optional [chrome extension](https://alibaba.github.io/page-agent/docs/features/chrome-extension).
+- **Multi-page Agent** — Extend your own web agent's reach across browser tabs via the [Chrome extension](https://alibaba.github.io/page-agent/docs/features/chrome-extension).
+- **MCP** - Allow your agent clients to control your browser.
 
 ## 🚀 Quick Start
 
@@ -42,15 +55,18 @@ The GUI Agent Living in Your Webpage. Control web interfaces with natural langua
 Fastest way to try PageAgent with our free Demo LLM:
 
 ```html
-<script src="{URL}" crossorigin="true"></script>
+<script
+    src="https://cdn.jsdelivr.net/npm/page-agent@1.12.4/dist/iife/page-agent.demo.js"
+    crossorigin="anonymous"
+></script>
+
+<!-- China CDN mirror if you can't access jsDelivr -->
+<!-- https://registry.npmmirror.com/page-agent/1.12.4/files/dist/iife/page-agent.demo.js -->
 ```
 
 > **⚠️ For technical evaluation only.** This demo CDN uses our free [testing LLM API](https://alibaba.github.io/page-agent/docs/features/models#free-testing-api). By using it, you agree to its [terms](https://github.com/alibaba/page-agent/blob/main/docs/terms-and-privacy.md).
-
-| Mirrors | URL                                                                                |
-| ------- | ---------------------------------------------------------------------------------- |
-| Global  | https://cdn.jsdelivr.net/npm/page-agent@1.5.8/dist/iife/page-agent.demo.js         |
-| China   | https://registry.npmmirror.com/page-agent/1.5.8/files/dist/iife/page-agent.demo.js |
+>
+> Add `?autoInit=false` to load the script without creating the demo agent automatically. You can then instantiate it with `new window.PageAgent(...)` and your own LLMs.
 
 ### NPM Installation
 
@@ -75,11 +91,17 @@ For more programmatic usage, see [📖 Documentations](https://alibaba.github.io
 
 ## 🤝 Contributing
 
-We welcome contributions from the community! Follow our instructions in [CONTRIBUTING.md](CONTRIBUTING.md) for setup and guidelines.
+We welcome contributions from the community! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines and [docs/developer-guide.md](docs/developer-guide.md) for local development workflows.
 
-Please read [Code of Conduct](docs/CODE_OF_CONDUCT.md) before contributing.
+Built something cool with PageAgent? Share it in [Show and Tell](https://github.com/alibaba/page-agent/discussions/categories/show-and-tell). 🙌
 
-Contributions generated entirely by bots or agents without substantial human involvement will not be accepted, and bot accounts may be blocked.
+Please read the [maintainer's note](https://github.com/alibaba/page-agent/issues/349) on principles and current state.
+
+Contributions generated entirely by **bots or AI** without substantial human involvement will **not be accepted**.
+
+## ⚖️ License
+
+[MIT License](LICENSE)
 
 ## 👏 Acknowledgments
 
@@ -97,23 +119,6 @@ Licensed under the MIT License
 We gratefully acknowledge the browser-use project and its contributors for their
 excellent work on web automation and DOM interaction patterns that helped make
 this project possible.
-
-Third-party dependencies and their licenses can be found in the package.json
-file and in the node_modules directory after installation.
 ```
 
-## 📄 License
-
-[MIT License](LICENSE)
-
----
-
 **⭐ Star this repo if you find PageAgent helpful!**
-
-<a href="https://www.star-history.com/?repos=alibaba%2Fpage-agent&type=date">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/image?repos=alibaba/page-agent&type=date&theme=dark&legend=top-left&v=7" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/image?repos=alibaba/page-agent&type=date&legend=top-left&v=7" />
-   <img alt="Star History Chart" src="https://api.star-history.com/image?repos=alibaba/page-agent&type=date&legend=top-left&v=7" />
- </picture>
-</a>

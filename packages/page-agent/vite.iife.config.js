@@ -3,7 +3,6 @@ import { config as dotenvConfig } from 'dotenv'
 import { dirname, resolve } from 'path'
 import { fileURLToPath } from 'url'
 import { defineConfig } from 'vite'
-// import { analyzer } from 'vite-bundle-analyzer'
 import cssInjectedByJsPlugin from 'vite-plugin-css-injected-by-js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -21,17 +20,6 @@ export default defineConfig(() => ({
 		// analyzer()
 	],
 	publicDir: false,
-	esbuild: {
-		keepNames: true,
-	},
-	resolve: {
-		alias: {
-			'@page-agent/page-controller': resolve(__dirname, '../page-controller/src/PageController.ts'),
-			'@page-agent/llms': resolve(__dirname, '../llms/src/index.ts'),
-			'@page-agent/core': resolve(__dirname, '../core/src/PageAgentCore.ts'),
-			'@page-agent/ui': resolve(__dirname, '../ui/src/index.ts'),
-		},
-	},
 	build: {
 		lib: {
 			entry: resolve(__dirname, 'src/demo.ts'),

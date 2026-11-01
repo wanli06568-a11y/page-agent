@@ -18,7 +18,7 @@ export default function Header() {
 	return (
 		<>
 			<header
-				className="relative z-50 bg-white/80 dark:bg-gray-900/80 backdrop-blur-md border-b border-gray-200 dark:border-gray-700"
+				className="sticky top-0 z-50 bg-white/80 dark:bg-gray-900/80 backdrop-blur-md border-b border-gray-200 dark:border-gray-700"
 				role="banner"
 			>
 				<div className="max-w-7xl mx-auto px-6 py-4">
@@ -31,7 +31,7 @@ export default function Header() {
 							onClick={() => setMobileMenuOpen(false)}
 						>
 							<img
-								src="https://img.alicdn.com/imgextra/i2/O1CN01HB8ylu1uozANEMZw2_!!6000000006085-49-tps-128-128.webp"
+								src="https://page-agent.github.io/assets/brand/page-agent-color-128.webp"
 								alt="PageAgent Logo"
 								className="w-10 h-10 rounded-xl group-hover:scale-110 transition-transform duration-200"
 							/>

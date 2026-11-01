@@ -1,16 +1,26 @@
 {
     "name": "@page-agent/core",
     "private": false,
-    "version": "1.5.8",
+    "version": "1.12.4",
     "type": "module",
-    "main": "./dist/esm/page-agent-core.js",
-    "module": "./dist/esm/page-agent-core.js",
-    "types": "./dist/esm/PageAgentCore.d.ts",
+    "main": "./src/PageAgentCore.ts",
+    "types": "./src/PageAgentCore.ts",
     "exports": {
         ".": {
-            "types": "./dist/esm/PageAgentCore.d.ts",
-            "import": "./dist/esm/page-agent-core.js",
-            "default": "./dist/esm/page-agent-core.js"
+            "types": "./src/PageAgentCore.ts",
+            "default": "./src/PageAgentCore.ts"
+        }
+    },
+    "publishConfig": {
+        "main": "./dist/esm/page-agent-core.js",
+        "module": "./dist/esm/page-agent-core.js",
+        "types": "./dist/esm/PageAgentCore.d.ts",
+        "exports": {
+            ".": {
+                "types": "./dist/esm/PageAgentCore.d.ts",
+                "import": "./dist/esm/page-agent-core.js",
+                "default": "./dist/esm/page-agent-core.js"
+            }
         }
     },
     "files": [
@@ -38,19 +48,20 @@
     "homepage": "https://alibaba.github.io/page-agent/",
     "scripts": {
         "build": "vite build",
+        "test": "vitest run",
         "dev:iife": "concurrently \"vite build --config vite.iife.config.js --watch\" \"npx serve dist/iife -p 5174\"",
-        "prepublishOnly": "node -e \"const fs=require('fs');['README.md','LICENSE'].forEach(f=>fs.copyFileSync('../../'+f,f))\"",
-        "postpublish": "node -e \"['README.md','LICENSE'].forEach(f=>{try{require('fs').unlinkSync(f)}catch{}})\""
+        "prepublishOnly": "node ../../scripts/pre-publish.js",
+        "postpublish": "node ../../scripts/post-publish.js"
     },
     "dependencies": {
-        "chalk": "^5.6.2",
-        "@page-agent/llms": "1.5.8",
-        "@page-agent/page-controller": "1.5.8"
+        "chalk": "^6.0.0",
+        "@page-agent/llms": "1.12.4",
+        "@page-agent/page-controller": "1.12.4"
     },
     "peerDependencies": {
         "zod": "^3.25.0 || ^4.0.0"
     },
     "devDependencies": {
-        "zod": "^4.3.5"
+        "zod": "^4.5.1"
     }
 }
